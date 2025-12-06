@@ -21,7 +21,7 @@ button { padding: 8px 12px; margin-right: 10px; }
 
 <h1>Dynamic Classroom Schedule</h1>
 
-<label><input type="checkbox" id="templateMakerMode"> Template Maker Mode</label>
+<label><input type="checkbox" id="freeEditMode"> Free Edit Mode</label>
 <br><br>
 
 <label>Template: 
@@ -47,8 +47,14 @@ button { padding: 8px 12px; margin-right: 10px; }
 // --- utils ---
 window.utils = {
     deepCopy: obj => JSON.parse(JSON.stringify(obj)),
-    minutesToTimeString: m => { const h=Math.floor(m/60), min=m%60; return `${h.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`; },
-    timeStringToMinutes: s => { const [h,m]=s.split(':').map(Number); return h*60+m; }
+    minutesToTimeString: m => {
+        const h=Math.floor(m/60), min=m%60;
+        return `${h.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`;
+    },
+    timeStringToMinutes: s => {
+        const [h,m]=s.split(':').map(Number); return h*60+m;
+    },
+    roundTo5: n => Math.round(n/5)*5
 };
 
 // --- state ---
@@ -69,13 +75,15 @@ window.solver = {
         const schedule = window.state.getCurrentSchedule();
         const conflictRows=[];
         const now = getCurrentTimeMinutes();
+        const freeEditMode = document.getElementById('freeEditMode').checked;
+
         for(let i=0;i<schedule.length-1;i++){
             const a=schedule[i], b=schedule[i+1];
-            if(a.start + a.duration <= now) continue;
+            if(!freeEditMode && a.start + a.duration <= now) continue;
             let overlap=(a.start+a.duration)-b.start;
             if(overlap>0){
                 const flexibles=schedule.slice(i+1)
-                    .filter(x=>x.flexible && !x.locked && x.start + x.duration > now)
+                    .filter(x=>x.flexible && !x.locked && (freeEditMode || x.start + x.duration > now))
                     .sort((x,y)=>x.priority - y.priority);
                 let remaining=overlap;
                 for(let f of flexibles){
@@ -86,10 +94,9 @@ window.solver = {
                     if(remaining<=0) break;
                 }
                 for(let j=i+1;j<schedule.length;j++){
-                    if(j>0 && schedule[j].start + schedule[j].duration > now)
-                        schedule[j].start=schedule[j-1].start+schedule[j-1].duration;
+                    if(j>0) schedule[j].start=schedule[j-1].start+schedule[j-1].duration;
                 }
-                if(remaining>0 && b.start + b.duration > now) conflictRows.push(b);
+                if(remaining>0) conflictRows.push(b);
             }
         }
         window.state.setCurrentSchedule(schedule);
@@ -209,36 +216,37 @@ function renderSchedule(schedule){
     const tbody=document.querySelector('#scheduleTable tbody');
     tbody.innerHTML='';
     const now = getCurrentTimeMinutes();
-    const templateMakerMode = document.getElementById('templateMakerMode').checked;
+    const freeEditMode = document.getElementById('freeEditMode').checked;
 
     schedule.forEach((act,i)=>{
         const row=document.createElement('tr');
         if(act.locked) row.classList.add('locked');
-        if(!templateMakerMode && act.start + act.duration <= now) row.classList.add('past');
-        row.setAttribute('draggable',!act.locked && !(act.start + act.duration <= now));
+        if(!freeEditMode && act.start + act.duration <= now) row.classList.add('past');
+        row.setAttribute('draggable',!act.locked && (freeEditMode || act.start + act.duration > now));
         row.dataset.index=i;
         row.innerHTML=`<td>${act.name}</td>
-                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
-                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible || (!templateMakerMode && act.start + act.duration <= now) ? 'disabled' : '')}></td>
-                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
-                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>`;
+                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${(!freeEditMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
+                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible || (!freeEditMode && act.start + act.duration <= now) ? 'disabled' : '')}></td>
+                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${(!freeEditMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
+                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${(!freeEditMode && act.start + act.duration <= now ? 'disabled' : '')}></td>`;
         tbody.appendChild(row);
     });
 
     renderCurrentTimeIndicator();
 
+    // input handlers
     document.querySelectorAll('.start').forEach(input=>{
         input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index), val=utils.timeStringToMinutes(e.target.value);
+            const i=parseInt(e.target.dataset.index), val=utils.roundTo5(utils.timeStringToMinutes(e.target.value));
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].start=val; window.solver.prioritySolve(); }
+            if(!schedule[i].locked && (freeEditMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].start=val; window.solver.prioritySolve(); }
         });
     });
     document.querySelectorAll('.duration').forEach(input=>{
         input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index), val=parseInt(e.target.value);
+            const i=parseInt(e.target.dataset.index), val=utils.roundTo5(parseInt(e.target.value));
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && schedule[i].flexible && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].duration=val; window.solver.prioritySolve(); }
+            if(!schedule[i].locked && schedule[i].flexible && (freeEditMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].duration=val; window.solver.prioritySolve(); }
         });
     });
     document.querySelectorAll('.priority').forEach(input=>{
@@ -285,7 +293,7 @@ renderSchedule(window.state.getCurrentSchedule());
 setInterval(renderCurrentTimeIndicator,60000);
 
 // --- button handlers ---
-document.getElementById('templateMakerMode').addEventListener('change', () => {
+document.getElementById('freeEditMode').addEventListener('change', () => {
     renderSchedule(window.state.getCurrentSchedule());
 });
 document.getElementById('solveBtn').addEventListener('click', ()=>window.solver.prioritySolve());
