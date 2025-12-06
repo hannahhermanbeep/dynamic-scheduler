@@ -1,0 +1,23 @@
+{
+  "name": "Regular Day",
+  "activities": [
+    {"name":"Arrival Time","start":480,"duration":45,"minDuration":30,"maxDuration":60,"flexible":true,"priority":4,"locked":false},
+    {"name":"Morning Meeting","start":525,"duration":15,"minDuration":10,"maxDuration":15,"flexible":true,"priority":2,"locked":false},
+    {"name":"Bathroom Break","start":540,"duration":10,"minDuration":10,"maxDuration":10,"flexible":false,"priority":1,"locked":false},
+    {"name":"Snack Time","start":550,"duration":25,"minDuration":25,"maxDuration":25,"flexible":false,"priority":1,"locked":false},
+    {"name":"Quiet Reading","start":575,"duration":10,"minDuration":10,"maxDuration":10,"flexible":false,"priority":1,"locked":false},
+    {"name":"Feeling Circle","start":585,"duration":15,"minDuration":15,"maxDuration":15,"flexible":false,"priority":1,"locked":false},
+    {"name":"Playground","start":600,"duration":55,"minDuration":45,"maxDuration":65,"flexible":true,"priority":3,"locked":false},
+    {"name":"Story Time","start":655,"duration":10,"minDuration":10,"maxDuration":10,"flexible":false,"priority":1,"locked":false},
+    {"name":"Activity Time","start":665,"duration":65,"minDuration":45,"maxDuration":65,"flexible":true,"priority":4,"locked":false},
+    {"name":"Bathroom Break","start":730,"duration":10,"minDuration":10,"maxDuration":10,"flexible":false,"priority":1,"locked":false},
+    {"name":"Lunch Time","start":740,"duration":25,"minDuration":25,"maxDuration":25,"flexible":false,"priority":1,"locked":false},
+    {"name":"Quiet Reading","start":765,"duration":10,"minDuration":10,"maxDuration":10,"flexible":false,"priority":1,"locked":false},
+    {"name":"Smart Board Story","start":775,"duration":10,"minDuration":10,"maxDuration":15,"flexible":true,"priority":4,"locked":false},
+    {"name":"Rest Time","start":785,"duration":55,"minDuration":40,"maxDuration":65,"flexible":true,"priority":4,"locked":false},
+    {"name":"Playground","start":840,"duration":25,"minDuration":15,"maxDuration":30,"flexible":true,"priority":3,"locked":false},
+    {"name":"Goodbye","start":865,"duration":5,"minDuration":5,"maxDuration":10,"flexible":true,"priority":2,"locked":false}
+  ],
+  "days": ["Monday","Wednesday"],
+  "special": []
+}
