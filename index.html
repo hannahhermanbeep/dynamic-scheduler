@@ -2,21 +2,29 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Dynamic Classroom Schedule - Drag & Drop</title>
+<title>Dynamic Classroom Schedule</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-  th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-  th { background: #f0f0f0; }
-  tr.locked { background: #eee; color: #888; cursor: default; }
-  tr.dragging { opacity: 0.5; }
-  input { width: 50px; }
-  button { padding: 8px 12px; margin-right: 10px; }
+body { font-family: Arial, sans-serif; margin: 20px; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+th { background: #f0f0f0; }
+tr.locked { background: #eee; color: #888; }
+tr.dragging { opacity: 0.5; }
+input { width: 60px; text-align:center; }
+button { padding: 8px 12px; margin-right: 10px; }
 </style>
 </head>
 <body>
 
 <h1>Dynamic Classroom Schedule</h1>
+
+<label>Template: 
+<select id="templateSelect"></select>
+<button id="loadTemplate">Load</button>
+<button id="saveTemplate">Save Current</button>
+<input type="file" id="importFile">
+<button id="exportTemplate">Export</button>
+</label>
 
 <table id="scheduleTable">
   <thead>
@@ -32,8 +40,14 @@
 // --- utils.js ---
 window.utils = {
     deepCopy: obj => JSON.parse(JSON.stringify(obj)),
-    minutesToTimeString: m => { const h=Math.floor(m/60), min=m%60; return `${h}:${min.toString().padStart(2,'0')}`; },
-    timeStringToMinutes: s => { const [h,m]=s.split(':').map(Number); return h*60+m; }
+    minutesToTimeString: m => {
+        const h=Math.floor(m/60), min=m%60;
+        return `${h.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`;
+    },
+    timeStringToMinutes: s => {
+        const [h,m]=s.split(':').map(Number);
+        return h*60+m;
+    }
 };
 
 // --- state.js ---
@@ -42,37 +56,70 @@ window.state = (function(){
     return {
         setDefaultSchedule: s=>{defaultSchedule=utils.deepCopy(s); currentSchedule=utils.deepCopy(s);},
         getCurrentSchedule: ()=>utils.deepCopy(currentSchedule),
-        setCurrentSchedule: s=>{currentSchedule=utils.deepCopy(s);},
-        resetToDefault: ()=>{currentSchedule=utils.deepCopy(defaultSchedule);}
+        setCurrentSchedule: s=>{currentSchedule=utils.deepCopy(s); renderSchedule(currentSchedule);},
+        resetToDefault: ()=>{currentSchedule=utils.deepCopy(defaultSchedule); renderSchedule(currentSchedule);}
     };
 })();
 
 // --- propagation.js ---
 window.propagation = {
-    propagateAll: function(schedule, dayStart, dayEnd){
+    propagateAll: function(schedule){
         for(let i=0;i<schedule.length-1;i++){
             let a=schedule[i], b=schedule[i+1];
             let overlap=(a.start+a.duration)-b.start;
-            if(overlap>0 && !b.locked && b.flexible){ b.duration=Math.max(b.minDuration,b.duration-overlap); overlap=(a.start+a.duration)-b.start; }
+            if(overlap>0 && !b.locked && b.flexible){
+                b.duration=Math.max(b.minDuration,b.duration-overlap);
+                overlap=(a.start+a.duration)-b.start;
+            }
             if(overlap>0 && !b.locked) b.start+=overlap;
         }
     }
 };
 
-// --- apply.js ---
-window.apply = {
-    applySchedule: function(schedule){ window.state.setCurrentSchedule(schedule); renderSchedule(schedule); }
-};
+// --- template manager ---
+function saveTemplate() {
+    const name=prompt("Template name:");
+    if(!name) return;
+    const template={name: name, activities: window.state.getCurrentSchedule()};
+    let templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+    templates.push(template);
+    localStorage.setItem('scheduleTemplates', JSON.stringify(templates));
+    refreshTemplateSelect();
+}
+function loadTemplate(index){
+    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+    if(index<0||index>=templates.length) return;
+    const t=templates[index];
+    window.state.setDefaultSchedule(t.activities);
+}
+function refreshTemplateSelect(){
+    const select=document.getElementById('templateSelect');
+    select.innerHTML='';
+    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+    templates.forEach((t,i)=>{
+        const opt=document.createElement('option'); opt.value=i; opt.text=t.name; select.appendChild(opt);
+    });
+}
+function exportTemplate(){
+    const index=document.getElementById('templateSelect').value;
+    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+    if(!templates[index]) return;
+    const dataStr="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(templates[index]));
+    const a=document.createElement('a'); a.href=dataStr; a.download=templates[index].name+".json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function importTemplate(file){
+    const reader=new FileReader();
+    reader.onload=function(e){
+        const t=JSON.parse(e.target.result);
+        let templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+        templates.push(t); localStorage.setItem('scheduleTemplates', JSON.stringify(templates));
+        refreshTemplateSelect();
+    }
+    reader.readAsText(file);
+}
 
-// --- solver.js ---
-window.solver = { solveSchedule: function(){
-    const schedule=window.state.getCurrentSchedule();
-    const dayStart=480, dayEnd=12*60+15;
-    window.propagation.propagateAll(schedule, dayStart, dayEnd);
-    window.apply.applySchedule(schedule);
-}};
-
-// --- Default schedule ---
+// --- default schedule ---
 const defaultSchedule=[
     {name:'Arrival', start:480, duration:60, minDuration:50, maxDuration:70, flexible:true},
     {name:'Meeting', start:540, duration:30, minDuration:30, maxDuration:30, flexible:false},
@@ -83,7 +130,7 @@ const defaultSchedule=[
 ];
 window.state.setDefaultSchedule(defaultSchedule);
 
-// --- Rendering ---
+// --- rendering ---
 function renderSchedule(schedule){
     const tbody=document.querySelector('#scheduleTable tbody');
     tbody.innerHTML='';
@@ -93,30 +140,28 @@ function renderSchedule(schedule){
         row.setAttribute('draggable',!act.locked);
         row.dataset.index=i;
         row.innerHTML=`<td>${act.name}</td>
-                       <td><input type="number" value="${act.start}" data-index="${i}" class="start"></td>
-                       <td><input type="number" value="${act.duration}" data-index="${i}" class="duration"></td>`;
+                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start"></td>
+                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration"></td>`;
         tbody.appendChild(row);
     });
 
-    // Input change handlers
+    // change handlers
     document.querySelectorAll('.start').forEach(input=>{
         input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index);
-            const val=parseInt(e.target.value);
+            const i=parseInt(e.target.dataset.index), val=utils.timeStringToMinutes(e.target.value);
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked){ schedule[i].start=val; window.state.setCurrentSchedule(schedule); }
+            if(!schedule[i].locked){ schedule[i].start=val; window.propagation.propagateAll(schedule); window.state.setCurrentSchedule(schedule); }
         });
     });
     document.querySelectorAll('.duration').forEach(input=>{
         input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index);
-            const val=parseInt(e.target.value);
+            const i=parseInt(e.target.dataset.index), val=parseInt(e.target.value);
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && schedule[i].flexible){ schedule[i].duration=val; window.state.setCurrentSchedule(schedule); }
+            if(!schedule[i].locked && schedule[i].flexible){ schedule[i].duration=val; window.propagation.propagateAll(schedule); window.state.setCurrentSchedule(schedule); }
         });
     });
 
-    // Drag-and-drop handlers
+    // drag-and-drop
     let dragged=null;
     tbody.querySelectorAll('tr').forEach(row=>{
         row.addEventListener('dragstart', e=>{ dragged=row; row.classList.add('dragging'); });
@@ -130,26 +175,26 @@ function renderSchedule(schedule){
                 const to=parseInt(row.dataset.index);
                 const moved=schedule.splice(from,1)[0];
                 schedule.splice(to,0,moved);
-                // Set start time to match new position
-                moved.start = to===0 ? schedule[0].start : schedule[to-1].start + schedule[to-1].duration;
-                window.propagation.propagateAll(schedule,480,12*60+15);
+                moved.start=to===0?schedule[0].start:schedule[to-1].start+schedule[to-1].duration;
+                window.propagation.propagateAll(schedule);
                 window.state.setCurrentSchedule(schedule);
-                renderSchedule(schedule);
             }
         });
     });
 }
 
-// --- Initial render ---
+// --- initial render ---
 renderSchedule(window.state.getCurrentSchedule());
+refreshTemplateSelect();
 
-// --- Button handlers ---
-document.getElementById('solveBtn').addEventListener('click', ()=>window.solver.solveSchedule());
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-    window.state.resetToDefault();
-    renderSchedule(window.state.getCurrentSchedule());
-});
+// --- button handlers ---
+document.getElementById('solveBtn').addEventListener('click', ()=>window.propagation.propagateAll(window.state.getCurrentSchedule()));
+document.getElementById('resetBtn').addEventListener('click', ()=>window.state.resetToDefault());
+document.getElementById('saveTemplate').addEventListener('click', saveTemplate);
+document.getElementById('loadTemplate').addEventListener('click', ()=>loadTemplate(document.getElementById('templateSelect').value));
+document.getElementById('exportTemplate').addEventListener('click', exportTemplate);
+document.getElementById('importFile').addEventListener('change', e=>importTemplate(e.target.files[0]));
+
 </script>
-
 </body>
 </html>
