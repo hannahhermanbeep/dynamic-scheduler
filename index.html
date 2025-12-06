@@ -5,13 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dynamic Classroom Schedule</title>
 <style>
-  body { font-family: Arial, sans-serif; }
   table { border-collapse: collapse; width: 100%; margin-top: 20px; }
   th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
-  input[type="number"], input[type="text"] { width: 50px; text-align: center; }
+  input[type="number"] { width: 50px; }
   button { width: 30px; }
-  .current-time-bar { background: rgba(0, 0, 255, 0.2); height: 2px; position: relative; top: 0; }
-  .highlight { background-color: #d0f0ff; }
 </style>
 </head>
 <body>
@@ -22,64 +19,59 @@
   <input type="checkbox" id="freeEditMode" /> Free Edit Mode
 </label>
 
-<select id="templateSelector"></select>
-<button id="loadTemplate">Load Template</button>
-<button id="resetSchedule">Reset</button>
-
-<div id="currentTimeBar" class="current-time-bar"></div>
-
 <table id="scheduleTable">
   <thead>
     <tr>
       <th>Activity</th>
       <th>Start Time</th>
-      <th>Duration</th>
-      <th>Min</th>
-      <th>Max</th>
+      <th>Duration (min)</th>
+      <th>Min Duration</th>
+      <th>Max Duration</th>
       <th>Flexible</th>
       <th>Priority</th>
       <th>Locked</th>
     </tr>
   </thead>
-  <tbody id="scheduleBody"></tbody>
+  <tbody id="scheduleBody">
+    <!-- Activity rows will be populated here -->
+  </tbody>
 </table>
 
 <script>
-// ==================== Sample Templates ====================
-let templates = {
-  "Regular Day": [
-    {id:0,name:"Arrival Time",start:480,duration:45,minDuration:30,maxDuration:60,flexible:true,priority:4,locked:false},
-    {id:1,name:"Morning Meeting",start:525,duration:15,minDuration:10,maxDuration:15,flexible:true,priority:2,locked:false},
-    {id:2,name:"Bathroom Break",start:540,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
-    {id:3,name:"Snack Time",start:550,duration:25,minDuration:25,maxDuration:25,flexible:false,priority:1,locked:false},
-    {id:4,name:"Quiet Reading",start:575,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
-    {id:5,name:"Feeling Circle",start:585,duration:15,minDuration:15,maxDuration:15,flexible:false,priority:1,locked:false},
-    {id:6,name:"Playground",start:600,duration:55,minDuration:45,maxDuration:65,flexible:true,priority:3,locked:false},
-    {id:7,name:"Story Time",start:655,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
-    {id:8,name:"Activity Time",start:665,duration:65,minDuration:45,maxDuration:65,flexible:true,priority:4,locked:false},
-    {id:9,name:"Bathroom Break",start:730,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
-    {id:10,name:"Lunch Time",start:740,duration:25,minDuration:25,maxDuration:25,flexible:false,priority:1,locked:false},
-    {id:11,name:"Quiet Reading",start:765,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
-    {id:12,name:"Smart Board Story",start:775,duration:10,minDuration:10,maxDuration:15,flexible:true,priority:4,locked:false},
-    {id:13,name:"Rest Time",start:785,duration:55,minDuration:40,maxDuration:65,flexible:true,priority:4,locked:false},
-    {id:14,name:"Playground",start:840,duration:25,minDuration:15,maxDuration:30,flexible:true,priority:3,locked:false},
-    {id:15,name:"Goodbye",start:865,duration:5,minDuration:5,maxDuration:10,flexible:true,priority:2,locked:false}
-  ]
-};
+// Example schedule data (Regular Day)
+let activities = [
+  {id:0,name:"Arrival Time",start:480,duration:45,minDuration:30,maxDuration:60,flexible:true,priority:4,locked:false},
+  {id:1,name:"Morning Meeting",start:525,duration:15,minDuration:10,maxDuration:15,flexible:true,priority:2,locked:false},
+  {id:2,name:"Bathroom Break",start:540,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:3,name:"Snack Time",start:550,duration:25,minDuration:25,maxDuration:25,flexible:false,priority:1,locked:false},
+  {id:4,name:"Quiet Reading",start:575,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:5,name:"Feeling Circle",start:585,duration:15,minDuration:15,maxDuration:15,flexible:false,priority:1,locked:false},
+  {id:6,name:"Playground",start:600,duration:55,minDuration:45,maxDuration:65,flexible:true,priority:3,locked:false},
+  {id:7,name:"Story Time",start:655,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:8,name:"Activity Time",start:665,duration:65,minDuration:45,maxDuration:65,flexible:true,priority:4,locked:false},
+  {id:9,name:"Bathroom Break",start:730,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:10,name:"Lunch Time",start:740,duration:25,minDuration:25,maxDuration:25,flexible:false,priority:1,locked:false},
+  {id:11,name:"Quiet Reading",start:765,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:12,name:"Smart Board Story",start:775,duration:10,minDuration:10,maxDuration:15,flexible:true,priority:4,locked:false},
+  {id:13,name:"Rest Time",start:785,duration:55,minDuration:40,maxDuration:65,flexible:true,priority:4,locked:false},
+  {id:14,name:"Playground",start:840,duration:25,minDuration:15,maxDuration:30,flexible:true,priority:3,locked:false},
+  {id:15,name:"Goodbye",start:865,duration:5,minDuration:5,maxDuration:10,flexible:true,priority:2,locked:false}
+];
 
-// ==================== Global Variables ====================
-let activities = [];
+const tableBody = document.getElementById('scheduleBody');
+const freeEditCheckbox = document.getElementById('freeEditMode');
 let freeEditMode = false;
 
-// ==================== Utility Functions ====================
+// Convert minutes since midnight to HH:mm AM/PM
 function minutesToHHMM(minutes) {
   let h = Math.floor(minutes/60);
   let m = minutes % 60;
   const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12; if(h===0) h=12;
+  h = h % 12; if(h === 0) h=12;
   return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')} ${ampm}`;
 }
 
+// Convert HH:mm AM/PM to minutes
 function HHMMToMinutes(hhmm) {
   let [time, ampm] = hhmm.split(' ');
   let [h,m] = time.split(':').map(Number);
@@ -88,14 +80,12 @@ function HHMMToMinutes(hhmm) {
   return h*60 + m;
 }
 
-// ==================== Table Rendering ====================
+// Populate table rows
 function renderTable() {
-  const tableBody = document.getElementById('scheduleBody');
   tableBody.innerHTML = '';
-  activities.forEach(activity=>{
+  activities.forEach(activity => {
     const row = document.createElement('tr');
     row.id = `activity-${activity.id}`;
-    row.draggable = true;
     row.innerHTML = `
       <td class="activity-name">${activity.name}</td>
       <td>
@@ -122,93 +112,10 @@ function renderTable() {
   });
 
   attachIncrementButtons();
-  attachDragAndDrop();
   updateActivityInputs();
-  updateCurrentTimeBar();
 }
 
-// ==================== Increment Buttons ====================
-function attachIncrementButtons() {
-  activities.forEach(activity=>{
-    const row = document.getElementById(`activity-${activity.id}`);
-    if(!row) return;
-    const startUp = row.querySelector('.start-up');
-    const startDown = row.querySelector('.start-down');
-    const durationUp = row.querySelector('.duration-up');
-    const durationDown = row.querySelector('.duration-down');
-    const startInput = row.querySelector('.start-time');
-    const durationInput = row.querySelector('.duration');
-
-    startUp.onclick = ()=>{ activity.start+=5; startInput.value=minutesToHHMM(activity.start); solveSchedule(); };
-    startDown.onclick = ()=>{ activity.start-=5; startInput.value=minutesToHHMM(activity.start); solveSchedule(); };
-    durationUp.onclick = ()=>{ activity.duration=Math.min(activity.duration+5,activity.maxDuration); durationInput.value=activity.duration; solveSchedule(); };
-    durationDown.onclick = ()=>{ activity.duration=Math.max(activity.duration-5,activity.minDuration); durationInput.value=activity.duration; solveSchedule(); };
-
-    startInput.onchange = ()=>{
-      activity.start = HHMMToMinutes(startInput.value);
-      solveSchedule();
-    };
-    durationInput.onchange = ()=>{
-      activity.duration = Math.min(Math.max(Number(durationInput.value), activity.minDuration), activity.maxDuration);
-      durationInput.value = activity.duration;
-      solveSchedule();
-    };
-  });
-}
-
-// ==================== Drag and Drop ====================
-function attachDragAndDrop() {
-  const rows = document.querySelectorAll('#scheduleBody tr');
-  let dragSrcRow = null;
-
-  rows.forEach(row=>{
-    row.addEventListener('dragstart', (e)=>{
-      dragSrcRow = row;
-      e.dataTransfer.effectAllowed='move';
-      row.style.opacity='0.5';
-    });
-    row.addEventListener('dragend', ()=>{
-      row.style.opacity='';
-    });
-    row.addEventListener('dragover', (e)=>{
-      e.preventDefault();
-      e.dataTransfer.dropEffect='move';
-    });
-    row.addEventListener('drop', (e)=>{
-      e.preventDefault();
-      if(dragSrcRow && dragSrcRow!==row){
-        const tbody=row.parentNode;
-        tbody.insertBefore(dragSrcRow,row);
-        reorderActivities();
-        solveSchedule();
-      }
-    });
-  });
-}
-
-function reorderActivities() {
-  const rows=document.querySelectorAll('#scheduleBody tr');
-  let currentTime=activities[0]?.start || 480;
-  const newActivities=[];
-  rows.forEach(row=>{
-    const id=Number(row.id.split('-')[1]);
-    const activity=activities.find(a=>a.id===id);
-    if(activity){
-      activity.start=currentTime;
-      currentTime+=activity.duration;
-      newActivities.push(activity);
-    }
-  });
-  activities=newActivities;
-}
-
-// ==================== Free Edit Mode ====================
-const freeEditCheckbox = document.getElementById('freeEditMode');
-freeEditCheckbox.addEventListener('change', ()=>{
-  freeEditMode = freeEditCheckbox.checked;
-  updateActivityInputs();
-});
-
+// Enable/disable inputs based on Free Edit Mode
 function updateActivityInputs() {
   const now = new Date();
   const nowMinutes = now.getHours()*60 + now.getMinutes();
@@ -222,55 +129,56 @@ function updateActivityInputs() {
       const isPast = (activity.start+activity.duration)<=nowMinutes;
       inputs.forEach(i=>i.disabled=isPast && !activity.locked);
     }
-    const startInput=row.querySelector('.start-time');
-    if(startInput) startInput.value=minutesToHHMM(activity.start);
+    const startInput = row.querySelector('.start-time');
+    if(startInput) startInput.value = minutesToHHMM(activity.start);
   });
 }
 
-// ==================== Current Time Bar ====================
-function updateCurrentTimeBar() {
-  const now=new Date();
-  const startMinutes=activities[0]?.start || 480;
-  const endMinutes=activities[activities.length-1]?.start + activities[activities.length-1]?.duration || 960;
-  const nowMinutes=now.getHours()*60 + now.getMinutes();
-  const bar=document.getElementById('currentTimeBar');
-  const percent=Math.min(Math.max((nowMinutes-startMinutes)/(endMinutes-startMinutes),0),1)*100;
-  bar.style.width=percent+'%';
+// Up/down buttons functionality
+function attachIncrementButtons() {
+  activities.forEach(activity=>{
+    const row = document.getElementById(`activity-${activity.id}`);
+    if(!row) return;
+    const startUp = row.querySelector('.start-up');
+    const startDown = row.querySelector('.start-down');
+    const durationUp = row.querySelector('.duration-up');
+    const durationDown = row.querySelector('.duration-down');
+    const startInput = row.querySelector('.start-time');
+    const durationInput = row.querySelector('.duration');
+
+    startUp.onclick = ()=>{ activity.start+=5; startInput.value=minutesToHHMM(activity.start); solveSchedule();};
+    startDown.onclick = ()=>{ activity.start-=5; startInput.value=minutesToHHMM(activity.start); solveSchedule();};
+    durationUp.onclick = ()=>{ activity.duration=Math.min(activity.duration+5, activity.maxDuration); durationInput.value=activity.duration; solveSchedule();};
+    durationDown.onclick = ()=>{ activity.duration=Math.max(activity.duration-5, activity.minDuration); durationInput.value=activity.duration; solveSchedule();};
+
+    // Allow manual HH:mm edits
+    startInput.onchange = ()=>{
+      activity.start = HHMMToMinutes(startInput.value);
+      solveSchedule();
+    };
+    durationInput.onchange = ()=>{
+      activity.duration = Math.min(Math.max(Number(durationInput.value), activity.minDuration), activity.maxDuration);
+      durationInput.value = activity.duration;
+      solveSchedule();
+    };
+  });
 }
 
-// ==================== Solver Placeholder ====================
+// Placeholder solver function
 function solveSchedule() {
-  // Placeholder: dynamic adjustment logic goes here
+  // Here you would recalc schedule dynamically respecting priorities, ranges, locked status
+  // For now, just re-render HH:mm to match internal minutes
   updateActivityInputs();
-  updateCurrentTimeBar();
 }
 
-// ==================== Template Handling ====================
-const templateSelector=document.getElementById('templateSelector');
-for(const t in templates){
-  const option=document.createElement('option');
-  option.value=t; option.textContent=t;
-  templateSelector.appendChild(option);
-}
+// Free Edit Mode toggle
+freeEditCheckbox.addEventListener('change', ()=>{
+  freeEditMode = freeEditCheckbox.checked;
+  updateActivityInputs();
+});
 
-document.getElementById('loadTemplate').onclick=()=>{
-  const t=templateSelector.value;
-  activities=JSON.parse(JSON.stringify(templates[t])); // deep copy
-  renderTable();
-};
-
-document.getElementById('resetSchedule').onclick=()=>{
-  const t=templateSelector.value;
-  activities=JSON.parse(JSON.stringify(templates[t]));
-  renderTable();
-};
-
-// ==================== Initial Load ====================
-activities=JSON.parse(JSON.stringify(templates["Regular Day"]));
+// Initial render
 renderTable();
-
-// Update current time bar every minute
-setInterval(updateCurrentTimeBar,60000);
 
 </script>
 </body>
