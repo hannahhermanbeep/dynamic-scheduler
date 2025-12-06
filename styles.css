@@ -1,0 +1,89 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    background: #f7f7f7;
+}
+
+header {
+    background: #4a90e2;
+    color: white;
+    padding: 15px;
+    text-align: center;
+}
+
+/* Template bar */
+#templateBar {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: #e3e3e3;
+    align-items: center;
+}
+
+/* Table */
+#activityTable {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+#activityTable th, #activityTable td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: center;
+}
+
+.locked {
+    background: #ffd8d8;
+}
+
+.conflict {
+    background: #ffcccc;
+    border: 2px solid red;
+}
+
+/* Timeline */
+#timeline {
+    margin: 20px;
+    background: white;
+    height: 80px;
+    position: relative;
+    border: 1px solid #999;
+}
+
+.timeline-block {
+    position: absolute;
+    top: 10px;
+    height: 60px;
+    border-radius: 6px;
+    color: white;
+    padding: 5px;
+    font-size: 12px;
+    overflow: hidden;
+}
+
+/* Dialog */
+#dialogOverlay.hidden {
+    display: none;
+}
+
+#dialogOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+}
+
+#dialogBox {
+    width: 400px;
+    background: white;
+    padding: 20px;
+    margin: 100px auto;
+    border-radius: 6px;
+}
+
+#dialogChoices button {
+    margin: 5px;
+}
