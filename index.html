@@ -21,6 +21,9 @@ button { padding: 8px 12px; margin-right: 10px; }
 
 <h1>Dynamic Classroom Schedule</h1>
 
+<label><input type="checkbox" id="templateMakerMode"> Template Maker Mode</label>
+<br><br>
+
 <label>Template: 
 <select id="templateSelect"></select>
 <button id="loadTemplate">Load</button>
@@ -206,17 +209,19 @@ function renderSchedule(schedule){
     const tbody=document.querySelector('#scheduleTable tbody');
     tbody.innerHTML='';
     const now = getCurrentTimeMinutes();
+    const templateMakerMode = document.getElementById('templateMakerMode').checked;
+
     schedule.forEach((act,i)=>{
         const row=document.createElement('tr');
         if(act.locked) row.classList.add('locked');
-        if(act.start + act.duration <= now) row.classList.add('past');
+        if(!templateMakerMode && act.start + act.duration <= now) row.classList.add('past');
         row.setAttribute('draggable',!act.locked && !(act.start + act.duration <= now));
         row.dataset.index=i;
         row.innerHTML=`<td>${act.name}</td>
-                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${act.start + act.duration <= now ? 'disabled' : ''}></td>
-                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible || act.start + act.duration <= now) ? 'disabled' : ''}></td>
-                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${act.start + act.duration <= now ? 'disabled' : ''}></td>
-                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${act.start + act.duration <= now ? 'disabled' : ''}></td>`;
+                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
+                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible || (!templateMakerMode && act.start + act.duration <= now) ? 'disabled' : '')}></td>
+                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
+                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>`;
         tbody.appendChild(row);
     });
 
@@ -226,14 +231,14 @@ function renderSchedule(schedule){
         input.addEventListener('change', e=>{
             const i=parseInt(e.target.dataset.index), val=utils.timeStringToMinutes(e.target.value);
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && schedule[i].start + schedule[i].duration > now){ schedule[i].start=val; window.solver.prioritySolve(); }
+            if(!schedule[i].locked && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].start=val; window.solver.prioritySolve(); }
         });
     });
     document.querySelectorAll('.duration').forEach(input=>{
         input.addEventListener('change', e=>{
             const i=parseInt(e.target.dataset.index), val=parseInt(e.target.value);
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && schedule[i].flexible && schedule[i].start + schedule[i].duration > now){ schedule[i].duration=val; window.solver.prioritySolve(); }
+            if(!schedule[i].locked && schedule[i].flexible && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].duration=val; window.solver.prioritySolve(); }
         });
     });
     document.querySelectorAll('.priority').forEach(input=>{
@@ -280,6 +285,9 @@ renderSchedule(window.state.getCurrentSchedule());
 setInterval(renderCurrentTimeIndicator,60000);
 
 // --- button handlers ---
+document.getElementById('templateMakerMode').addEventListener('change', () => {
+    renderSchedule(window.state.getCurrentSchedule());
+});
 document.getElementById('solveBtn').addEventListener('click', ()=>window.solver.prioritySolve());
 document.getElementById('resetBtn').addEventListener('click', ()=>window.state.resetToDefault());
 document.getElementById('undoBtn').addEventListener('click', ()=>window.state.undo());
