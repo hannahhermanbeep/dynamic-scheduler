@@ -2,299 +2,183 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dynamic Classroom Schedule</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 20px; }
-table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-th { background: #f0f0f0; }
-tr.locked { background: #eee; color: #888; }
-tr.conflict { background: #fdd; }
-tr.past { background: #f3f3f3; color: #aaa; }
-tr.dragging { opacity: 0.5; }
-tr#currentTimeRow { background: #d0f0ff; color: #000; font-weight: bold; }
-input { width: 60px; text-align:center; }
-button { padding: 8px 12px; margin-right: 10px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+  th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
+  input[type="number"] { width: 50px; }
+  button { width: 30px; }
 </style>
 </head>
 <body>
 
-<h1>Dynamic Classroom Schedule</h1>
+<h1>Classroom Schedule</h1>
 
-<label><input type="checkbox" id="templateMakerMode"> Template Maker Mode</label>
-<br><br>
-
-<label>Template: 
-<select id="templateSelect"></select>
-<button id="loadTemplate">Load</button>
-<button id="saveTemplate">Save Current</button>
-<input type="file" id="importFile">
-<button id="exportTemplate">Export</button>
+<label>
+  <input type="checkbox" id="freeEditMode" /> Free Edit Mode
 </label>
 
 <table id="scheduleTable">
   <thead>
-    <tr><th>Activity</th><th>Start Time</th><th>Duration (min)</th><th>Priority</th><th>Lock</th></tr>
+    <tr>
+      <th>Activity</th>
+      <th>Start Time</th>
+      <th>Duration (min)</th>
+      <th>Min Duration</th>
+      <th>Max Duration</th>
+      <th>Flexible</th>
+      <th>Priority</th>
+      <th>Locked</th>
+    </tr>
   </thead>
-  <tbody></tbody>
+  <tbody id="scheduleBody">
+    <!-- Activity rows will be populated here -->
+  </tbody>
 </table>
 
-<button id="solveBtn">Solve Schedule</button>
-<button id="resetBtn">Reset to Default</button>
-<button id="undoBtn">Undo</button>
-
 <script>
-// --- utils ---
-window.utils = {
-    deepCopy: obj => JSON.parse(JSON.stringify(obj)),
-    minutesToTimeString: m => { const h=Math.floor(m/60), min=m%60; return `${h.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`; },
-    timeStringToMinutes: s => { const [h,m]=s.split(':').map(Number); return h*60+m; }
-};
-
-// --- state ---
-window.state = (function(){
-    let currentSchedule=[], defaultSchedule=[], history=[];
-    return {
-        setDefaultSchedule: s=>{defaultSchedule=utils.deepCopy(s); currentSchedule=utils.deepCopy(s); history=[]; renderSchedule(currentSchedule);},
-        getCurrentSchedule: ()=>utils.deepCopy(currentSchedule),
-        setCurrentSchedule: s=>{history.push(utils.deepCopy(currentSchedule)); currentSchedule=utils.deepCopy(s); renderSchedule(currentSchedule);},
-        resetToDefault: ()=>{currentSchedule=utils.deepCopy(defaultSchedule); history=[]; renderSchedule(currentSchedule);},
-        undo: ()=>{ if(history.length>0){ currentSchedule=history.pop(); renderSchedule(currentSchedule);} }
-    };
-})();
-
-// --- solver ---
-window.solver = {
-    prioritySolve: function() {
-        const schedule = window.state.getCurrentSchedule();
-        const conflictRows=[];
-        const now = getCurrentTimeMinutes();
-        for(let i=0;i<schedule.length-1;i++){
-            const a=schedule[i], b=schedule[i+1];
-            if(a.start + a.duration <= now) continue;
-            let overlap=(a.start+a.duration)-b.start;
-            if(overlap>0){
-                const flexibles=schedule.slice(i+1)
-                    .filter(x=>x.flexible && !x.locked && x.start + x.duration > now)
-                    .sort((x,y)=>x.priority - y.priority);
-                let remaining=overlap;
-                for(let f of flexibles){
-                    const reducible=f.duration-f.minDuration;
-                    const reduce=Math.min(reducible, remaining);
-                    f.duration-=reduce;
-                    remaining-=reduce;
-                    if(remaining<=0) break;
-                }
-                for(let j=i+1;j<schedule.length;j++){
-                    if(j>0 && schedule[j].start + schedule[j].duration > now)
-                        schedule[j].start=schedule[j-1].start+schedule[j-1].duration;
-                }
-                if(remaining>0 && b.start + b.duration > now) conflictRows.push(b);
-            }
-        }
-        window.state.setCurrentSchedule(schedule);
-        document.querySelectorAll('#scheduleTable tbody tr').forEach(tr=>tr.classList.remove('conflict'));
-        conflictRows.forEach(act=>{
-            const idx=schedule.indexOf(act);
-            document.querySelectorAll('#scheduleTable tbody tr')[idx].classList.add('conflict');
-        });
-        if(conflictRows.length>0) alert("Some conflicts could not be resolved.");
-    }
-};
-
-// --- template manager ---
-function saveTemplate() {
-    const name=prompt("Template name:");
-    if(!name) return;
-    const schedule=window.state.getCurrentSchedule();
-    const days=prompt("Enter weekdays for this template (comma separated, e.g., Monday,Wednesday):","");
-    const special=prompt("Enter special cases for this template (comma separated, optional):","");
-    const template={name: name, activities: schedule, days: days?days.split(',').map(d=>d.trim()):[], special: special?special.split(',').map(s=>s.trim()):[]};
-    let templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-    templates.push(template);
-    localStorage.setItem('scheduleTemplates', JSON.stringify(templates));
-    refreshTemplateSelect();
-}
-function loadTemplate(index){
-    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-    if(index<0||index>=templates.length) return;
-    const t=templates[index];
-    window.state.setDefaultSchedule(t.activities);
-}
-function refreshTemplateSelect(){
-    const select=document.getElementById('templateSelect');
-    select.innerHTML='';
-    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-    templates.forEach((t,i)=>{ const opt=document.createElement('option'); opt.value=i; opt.text=t.name; select.appendChild(opt); });
-}
-function exportTemplate(){
-    const index=document.getElementById('templateSelect').value;
-    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-    if(!templates[index]) return;
-    const dataStr="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(templates[index]));
-    const a=document.createElement('a'); a.href=dataStr; a.download=templates[index].name+".json";
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-function importTemplate(file){
-    const reader=new FileReader();
-    reader.onload=function(e){
-        const t=JSON.parse(e.target.result);
-        let templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-        templates.push(t); localStorage.setItem('scheduleTemplates', JSON.stringify(templates));
-        refreshTemplateSelect();
-    }
-    reader.readAsText(file);
-}
-
-// --- automatic template selection ---
-function autoLoadTemplate(){
-    const templates = JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    const specialCases = []; // can be manually added or detected
-    const matches = templates.filter(t => (t.days?.includes(today) || t.special?.some(s=>specialCases.includes(s))));
-    
-    if(matches.length === 0) return;
-    if(matches.length === 1){
-        window.state.setDefaultSchedule(matches[0].activities);
-        return;
-    }
-    const choice = prompt("Multiple templates match today:\n" + matches.map((t,i)=>`${i+1}: ${t.name}`).join("\n") + "\nEnter number:");
-    const idx = parseInt(choice)-1;
-    if(idx>=0 && idx<matches.length) window.state.setDefaultSchedule(matches[idx].activities);
-}
-
-// --- helper: current time ---
-function getCurrentTimeMinutes() {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-}
-
-// --- default schedule ---
-const defaultSchedule=[
-    {name:'Arrival', start:480, duration:60, minDuration:50, maxDuration:70, flexible:true, priority:2, locked:false},
-    {name:'Meeting', start:540, duration:30, minDuration:30, maxDuration:30, flexible:false, priority:5, locked:false},
-    {name:'Playground', start:570, duration:60, minDuration:50, maxDuration:70, flexible:true, priority:1, locked:false},
-    {name:'Play', start:630, duration:60, minDuration:60, maxDuration:60, flexible:false, priority:5, locked:false},
-    {name:'Lunch', start:690, duration:30, minDuration:20, maxDuration:40, flexible:true, priority:2, locked:false},
-    {name:'Goodbye', start:720, duration:15, minDuration:15, maxDuration:15, flexible:false, priority:5, locked:false}
+// Example schedule data (Regular Day)
+let activities = [
+  {id:0,name:"Arrival Time",start:480,duration:45,minDuration:30,maxDuration:60,flexible:true,priority:4,locked:false},
+  {id:1,name:"Morning Meeting",start:525,duration:15,minDuration:10,maxDuration:15,flexible:true,priority:2,locked:false},
+  {id:2,name:"Bathroom Break",start:540,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:3,name:"Snack Time",start:550,duration:25,minDuration:25,maxDuration:25,flexible:false,priority:1,locked:false},
+  {id:4,name:"Quiet Reading",start:575,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:5,name:"Feeling Circle",start:585,duration:15,minDuration:15,maxDuration:15,flexible:false,priority:1,locked:false},
+  {id:6,name:"Playground",start:600,duration:55,minDuration:45,maxDuration:65,flexible:true,priority:3,locked:false},
+  {id:7,name:"Story Time",start:655,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:8,name:"Activity Time",start:665,duration:65,minDuration:45,maxDuration:65,flexible:true,priority:4,locked:false},
+  {id:9,name:"Bathroom Break",start:730,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:10,name:"Lunch Time",start:740,duration:25,minDuration:25,maxDuration:25,flexible:false,priority:1,locked:false},
+  {id:11,name:"Quiet Reading",start:765,duration:10,minDuration:10,maxDuration:10,flexible:false,priority:1,locked:false},
+  {id:12,name:"Smart Board Story",start:775,duration:10,minDuration:10,maxDuration:15,flexible:true,priority:4,locked:false},
+  {id:13,name:"Rest Time",start:785,duration:55,minDuration:40,maxDuration:65,flexible:true,priority:4,locked:false},
+  {id:14,name:"Playground",start:840,duration:25,minDuration:15,maxDuration:30,flexible:true,priority:3,locked:false},
+  {id:15,name:"Goodbye",start:865,duration:5,minDuration:5,maxDuration:10,flexible:true,priority:2,locked:false}
 ];
-window.state.setDefaultSchedule(defaultSchedule);
 
-// --- current time indicator ---
-function renderCurrentTimeIndicator() {
-    const tbody = document.querySelector('#scheduleTable tbody');
-    let timeRow = document.getElementById('currentTimeRow');
-    const now = getCurrentTimeMinutes();
-    
-    if(timeRow) timeRow.remove();
+const tableBody = document.getElementById('scheduleBody');
+const freeEditCheckbox = document.getElementById('freeEditMode');
+let freeEditMode = false;
 
-    const schedule = window.state.getCurrentSchedule();
-    let insertIndex = schedule.findIndex(act => act.start + act.duration > now);
-    if(insertIndex === -1) insertIndex = schedule.length;
+// Convert minutes since midnight to HH:mm AM/PM
+function minutesToHHMM(minutes) {
+  let h = Math.floor(minutes/60);
+  let m = minutes % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if(h === 0) h=12;
+  return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')} ${ampm}`;
+}
 
-    timeRow = document.createElement('tr');
-    timeRow.id = 'currentTimeRow';
-    timeRow.innerHTML = `<td colspan="5">Current Time: ${utils.minutesToTimeString(now)}</td>`;
+// Convert HH:mm AM/PM to minutes
+function HHMMToMinutes(hhmm) {
+  let [time, ampm] = hhmm.split(' ');
+  let [h,m] = time.split(':').map(Number);
+  if(ampm==='PM' && h!==12) h+=12;
+  if(ampm==='AM' && h===12) h=0;
+  return h*60 + m;
+}
 
-    const rows = tbody.querySelectorAll('tr');
-    if(insertIndex < rows.length) {
-        tbody.insertBefore(timeRow, rows[insertIndex]);
+// Populate table rows
+function renderTable() {
+  tableBody.innerHTML = '';
+  activities.forEach(activity => {
+    const row = document.createElement('tr');
+    row.id = `activity-${activity.id}`;
+    row.innerHTML = `
+      <td class="activity-name">${activity.name}</td>
+      <td>
+        <div style="display:flex; align-items:center;">
+          <button class="start-down">-</button>
+          <input type="text" class="start-time" value="${minutesToHHMM(activity.start)}" size="7"/>
+          <button class="start-up">+</button>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex; align-items:center;">
+          <button class="duration-down">-</button>
+          <input type="number" class="duration" value="${activity.duration}" min="${activity.minDuration}" max="${activity.maxDuration}" style="width:50px;"/>
+          <button class="duration-up">+</button>
+        </div>
+      </td>
+      <td>${activity.minDuration}</td>
+      <td>${activity.maxDuration}</td>
+      <td><input type="checkbox" class="flexible" ${activity.flexible?'checked':''} disabled/></td>
+      <td>${activity.priority}</td>
+      <td><input type="checkbox" class="locked" ${activity.locked?'checked':''}/></td>
+    `;
+    tableBody.appendChild(row);
+  });
+
+  attachIncrementButtons();
+  updateActivityInputs();
+}
+
+// Enable/disable inputs based on Free Edit Mode
+function updateActivityInputs() {
+  const now = new Date();
+  const nowMinutes = now.getHours()*60 + now.getMinutes();
+  activities.forEach(activity=>{
+    const row = document.getElementById(`activity-${activity.id}`);
+    if(!row) return;
+    const inputs = row.querySelectorAll('input, button');
+    if(freeEditMode) {
+      inputs.forEach(i=>i.disabled=false);
     } else {
-        tbody.appendChild(timeRow);
+      const isPast = (activity.start+activity.duration)<=nowMinutes;
+      inputs.forEach(i=>i.disabled=isPast && !activity.locked);
     }
+    const startInput = row.querySelector('.start-time');
+    if(startInput) startInput.value = minutesToHHMM(activity.start);
+  });
 }
 
-// --- rendering ---
-function renderSchedule(schedule){
-    const tbody=document.querySelector('#scheduleTable tbody');
-    tbody.innerHTML='';
-    const now = getCurrentTimeMinutes();
-    const templateMakerMode = document.getElementById('templateMakerMode').checked;
+// Up/down buttons functionality
+function attachIncrementButtons() {
+  activities.forEach(activity=>{
+    const row = document.getElementById(`activity-${activity.id}`);
+    if(!row) return;
+    const startUp = row.querySelector('.start-up');
+    const startDown = row.querySelector('.start-down');
+    const durationUp = row.querySelector('.duration-up');
+    const durationDown = row.querySelector('.duration-down');
+    const startInput = row.querySelector('.start-time');
+    const durationInput = row.querySelector('.duration');
 
-    schedule.forEach((act,i)=>{
-        const row=document.createElement('tr');
-        if(act.locked) row.classList.add('locked');
-        if(!templateMakerMode && act.start + act.duration <= now) row.classList.add('past');
-        row.setAttribute('draggable',!act.locked && !(act.start + act.duration <= now));
-        row.dataset.index=i;
-        row.innerHTML=`<td>${act.name}</td>
-                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
-                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible || (!templateMakerMode && act.start + act.duration <= now) ? 'disabled' : '')}></td>
-                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
-                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>`;
-        tbody.appendChild(row);
-    });
+    startUp.onclick = ()=>{ activity.start+=5; startInput.value=minutesToHHMM(activity.start); solveSchedule();};
+    startDown.onclick = ()=>{ activity.start-=5; startInput.value=minutesToHHMM(activity.start); solveSchedule();};
+    durationUp.onclick = ()=>{ activity.duration=Math.min(activity.duration+5, activity.maxDuration); durationInput.value=activity.duration; solveSchedule();};
+    durationDown.onclick = ()=>{ activity.duration=Math.max(activity.duration-5, activity.minDuration); durationInput.value=activity.duration; solveSchedule();};
 
-    renderCurrentTimeIndicator();
-
-    document.querySelectorAll('.start').forEach(input=>{
-        input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index), val=utils.timeStringToMinutes(e.target.value);
-            const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].start=val; window.solver.prioritySolve(); }
-        });
-    });
-    document.querySelectorAll('.duration').forEach(input=>{
-        input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index), val=parseInt(e.target.value);
-            const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && schedule[i].flexible && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].duration=val; window.solver.prioritySolve(); }
-        });
-    });
-    document.querySelectorAll('.priority').forEach(input=>{
-        input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index), val=parseInt(e.target.value);
-            const schedule=window.state.getCurrentSchedule();
-            schedule[i].priority=val; window.state.setCurrentSchedule(schedule);
-        });
-    });
-    document.querySelectorAll('.lock').forEach(input=>{
-        input.addEventListener('change', e=>{
-            const i=parseInt(e.target.dataset.index);
-            const schedule=window.state.getCurrentSchedule();
-            schedule[i].locked=e.target.checked; window.state.setCurrentSchedule(schedule);
-        });
-    });
-
-    // drag-and-drop
-    let dragged=null;
-    tbody.querySelectorAll('tr').forEach(row=>{
-        row.addEventListener('dragstart', e=>{ dragged=row; row.classList.add('dragging'); });
-        row.addEventListener('dragend', e=>{ dragged=null; row.classList.remove('dragging'); });
-        row.addEventListener('dragover', e=>{ e.preventDefault(); });
-        row.addEventListener('drop', e=>{
-            e.preventDefault();
-            if(dragged && dragged!==row){
-                const schedule=window.state.getCurrentSchedule();
-                const from=parseInt(dragged.dataset.index);
-                const to=parseInt(row.dataset.index);
-                const moved=schedule.splice(from,1)[0];
-                schedule.splice(to,0,moved);
-                schedule[0].start=schedule[0].start;
-                for(let i=1;i<schedule.length;i++) schedule[i].start=schedule[i-1].start+schedule[i-1].duration;
-                window.solver.prioritySolve();
-            }
-        });
-    });
+    // Allow manual HH:mm edits
+    startInput.onchange = ()=>{
+      activity.start = HHMMToMinutes(startInput.value);
+      solveSchedule();
+    };
+    durationInput.onchange = ()=>{
+      activity.duration = Math.min(Math.max(Number(durationInput.value), activity.minDuration), activity.maxDuration);
+      durationInput.value = activity.duration;
+      solveSchedule();
+    };
+  });
 }
 
-// --- initial render ---
-refreshTemplateSelect();
-autoLoadTemplate();
-renderSchedule(window.state.getCurrentSchedule());
-setInterval(renderCurrentTimeIndicator,60000);
+// Placeholder solver function
+function solveSchedule() {
+  // Here you would recalc schedule dynamically respecting priorities, ranges, locked status
+  // For now, just re-render HH:mm to match internal minutes
+  updateActivityInputs();
+}
 
-// --- button handlers ---
-document.getElementById('templateMakerMode').addEventListener('change', () => {
-    renderSchedule(window.state.getCurrentSchedule());
+// Free Edit Mode toggle
+freeEditCheckbox.addEventListener('change', ()=>{
+  freeEditMode = freeEditCheckbox.checked;
+  updateActivityInputs();
 });
-document.getElementById('solveBtn').addEventListener('click', ()=>window.solver.prioritySolve());
-document.getElementById('resetBtn').addEventListener('click', ()=>window.state.resetToDefault());
-document.getElementById('undoBtn').addEventListener('click', ()=>window.state.undo());
-document.getElementById('saveTemplate').addEventListener('click', saveTemplate);
-document.getElementById('loadTemplate').addEventListener('click', ()=>loadTemplate(document.getElementById('templateSelect').value));
-document.getElementById('exportTemplate').addEventListener('click', exportTemplate);
-document.getElementById('importFile').addEventListener('change', e=>importTemplate(e.target.files[0]));
+
+// Initial render
+renderTable();
 
 </script>
 </body>
