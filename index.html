@@ -47,15 +47,9 @@ button { padding: 8px 12px; margin-right: 10px; }
 // --- utils ---
 window.utils = {
     deepCopy: obj => JSON.parse(JSON.stringify(obj)),
-    minutesToTimeString: m => {
-        const h = Math.floor(m/60), min = m%60;
-        return `${h.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`;
-    },
-    timeStringToMinutes: s => {
-        const [h,m]=s.split(':').map(Number);
-        return h*60+m;
-    },
-    clamp: (val,min,max)=>Math.max(min,Math.min(max,val))
+    minutesToTimeString: m => { const h=Math.floor(m/60), min=m%60; return `${h.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`; },
+    timeStringToMinutes: s => { const [h,m]=s.split(':').map(Number); return h*60+m; },
+    clamp: (val,min,max)=>Math.min(Math.max(val,min),max)
 };
 
 // --- state ---
@@ -82,7 +76,7 @@ window.solver = {
             let overlap=(a.start+a.duration)-b.start;
             if(overlap>0){
                 const flexibles=schedule.slice(i+1)
-                    .filter(x=>x.flexible && !x.locked && (x.start + x.duration > now))
+                    .filter(x=>x.flexible && !x.locked && x.start + x.duration > now)
                     .sort((x,y)=>x.priority - y.priority);
                 let remaining=overlap;
                 for(let f of flexibles){
@@ -157,7 +151,7 @@ function importTemplate(file){
 function autoLoadTemplate(){
     const templates = JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
     const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    const specialCases = [];
+    const specialCases = []; // can be manually added or detected
     const matches = templates.filter(t => (t.days?.includes(today) || t.special?.some(s=>specialCases.includes(s))));
     
     if(matches.length === 0) return;
@@ -216,29 +210,33 @@ function renderSchedule(schedule){
     const tbody=document.querySelector('#scheduleTable tbody');
     tbody.innerHTML='';
     const now = getCurrentTimeMinutes();
-    const templateMakerMode = document.getElementById('templateMakerMode').checked;
+    const freeEditMode = document.getElementById('templateMakerMode').checked;
 
     schedule.forEach((act,i)=>{
         const row=document.createElement('tr');
         if(act.locked) row.classList.add('locked');
-        if(!templateMakerMode && act.start + act.duration <= now) row.classList.add('past');
-        row.setAttribute('draggable',!act.locked && !(act.start + act.duration <= now));
+        if(!freeEditMode && act.start + act.duration <= now) row.classList.add('past');
+        row.setAttribute('draggable',!act.locked && (freeEditMode || act.start + act.duration > now));
         row.dataset.index=i;
         row.innerHTML=`<td>${act.name}</td>
-                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
-                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible || (!templateMakerMode && act.start + act.duration <= now) ? 'disabled' : '')}></td>
-                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
-                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${(!templateMakerMode && act.start + act.duration <= now ? 'disabled' : '')}></td>`;
+                       <td><input type="time" step="300" value="${utils.minutesToTimeString(act.start)}" data-index="${i}" class="start" ${(!freeEditMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
+                       <td><input type="number" step="5" min="${act.minDuration}" max="${act.maxDuration}" value="${act.duration}" data-index="${i}" class="duration" ${(!act.flexible && !freeEditMode ? 'disabled' : '')}></td>
+                       <td><input type="number" step="1" min="1" max="5" value="${act.priority}" data-index="${i}" class="priority" ${(!freeEditMode && act.start + act.duration <= now ? 'disabled' : '')}></td>
+                       <td><input type="checkbox" ${act.locked?'checked':''} data-index="${i}" class="lock" ${(!freeEditMode && act.start + act.duration <= now ? 'disabled' : '')}></td>`;
         tbody.appendChild(row);
     });
 
     renderCurrentTimeIndicator();
 
+    // --- input listeners ---
     document.querySelectorAll('.start').forEach(input=>{
         input.addEventListener('change', e=>{
             const i=parseInt(e.target.dataset.index), val=utils.timeStringToMinutes(e.target.value);
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && (templateMakerMode || schedule[i].start + schedule[i].duration > now)){ schedule[i].start=val; window.solver.prioritySolve(); }
+            if(!schedule[i].locked && (freeEditMode || schedule[i].start + schedule[i].duration > now)){
+                schedule[i].start=val;
+                window.state.setCurrentSchedule(schedule);
+            }
         });
     });
     document.querySelectorAll('.duration').forEach(input=>{
@@ -246,10 +244,10 @@ function renderSchedule(schedule){
         input.addEventListener('change', e=>{
             const i=parseInt(e.target.dataset.index);
             const schedule=window.state.getCurrentSchedule();
-            if(!schedule[i].locked && schedule[i].flexible){
-                schedule[i].duration = utils.clamp(parseInt(e.target.value), schedule[i].minDuration, schedule[i].maxDuration);
+            if(!schedule[i].locked && (freeEditMode || schedule[i].flexible)){
+                schedule[i].duration = utils.clamp(Math.round(parseInt(e.target.value)/5)*5, schedule[i].minDuration, schedule[i].maxDuration);
                 e.target.value = schedule[i].duration;
-                window.solver.prioritySolve();
+                window.state.setCurrentSchedule(schedule);
             }
         });
     });
@@ -257,18 +255,20 @@ function renderSchedule(schedule){
         input.addEventListener('change', e=>{
             const i=parseInt(e.target.dataset.index), val=parseInt(e.target.value);
             const schedule=window.state.getCurrentSchedule();
-            schedule[i].priority=val; window.state.setCurrentSchedule(schedule);
+            schedule[i].priority=val;
+            window.state.setCurrentSchedule(schedule);
         });
     });
     document.querySelectorAll('.lock').forEach(input=>{
         input.addEventListener('change', e=>{
             const i=parseInt(e.target.dataset.index);
             const schedule=window.state.getCurrentSchedule();
-            schedule[i].locked=e.target.checked; window.state.setCurrentSchedule(schedule);
+            schedule[i].locked=e.target.checked;
+            window.state.setCurrentSchedule(schedule);
         });
     });
 
-    // drag-and-drop
+    // --- drag-and-drop ---
     let dragged=null;
     tbody.querySelectorAll('tr').forEach(row=>{
         row.addEventListener('dragstart', e=>{ dragged=row; row.classList.add('dragging'); });
@@ -284,7 +284,7 @@ function renderSchedule(schedule){
                 schedule.splice(to,0,moved);
                 schedule[0].start=schedule[0].start;
                 for(let i=1;i<schedule.length;i++) schedule[i].start=schedule[i-1].start+schedule[i-1].duration;
-                window.solver.prioritySolve();
+                window.state.setCurrentSchedule(schedule);
             }
         });
     });
@@ -297,9 +297,7 @@ renderSchedule(window.state.getCurrentSchedule());
 setInterval(renderCurrentTimeIndicator,60000);
 
 // --- button handlers ---
-document.getElementById('templateMakerMode').addEventListener('change', () => {
-    renderSchedule(window.state.getCurrentSchedule());
-});
+document.getElementById('templateMakerMode').addEventListener('change', () => { renderSchedule(window.state.getCurrentSchedule()); });
 document.getElementById('solveBtn').addEventListener('click', ()=>window.solver.prioritySolve());
 document.getElementById('resetBtn').addEventListener('click', ()=>window.state.resetToDefault());
 document.getElementById('undoBtn').addEventListener('click', ()=>window.state.undo());
