@@ -1,5 +1,6 @@
 {
   "name": "Regular Day",
+  "dayEnd": 870,    // 14*60 + 30 = 870 minutes
   "activities": [
     {"name":"Arrival Time","start":480,"duration":45,"minDuration":30,"maxDuration":60,"flexible":true,"priority":4,"locked":false},
     {"name":"Morning Meeting","start":525,"duration":15,"minDuration":10,"maxDuration":15,"flexible":true,"priority":2,"locked":false},

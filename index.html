@@ -137,23 +137,42 @@ window.solver = {
 
 // --- template manager ---
 function saveTemplate() {
-    const name=prompt("Template name:");
+    const name = prompt("Template name:");
     if(!name) return;
-    const schedule=window.state.getCurrentSchedule();
-    const days=prompt("Enter weekdays for this template (comma separated, e.g., Monday,Wednesday):","");
-    const special=prompt("Enter special cases for this template (comma separated, optional):","");
-    const template={name: name, activities: schedule, days: days?days.split(',').map(d=>d.trim()):[], special: special?special.split(',').map(s=>s.trim()):[]};
-    let templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+
+    const schedule = window.state.getCurrentSchedule();
+
+    // Ask for day end time in HH:mm
+    let dayEndStr = prompt("Enter day end time (HH:mm, e.g., 12:15):", utils.minutesToTimeString(schedule[schedule.length-1].start + schedule[schedule.length-1].duration));
+    if(!dayEndStr) return;
+    const dayEnd = utils.timeStringToMinutes(dayEndStr);
+
+    const days = prompt("Enter weekdays for this template (comma separated, e.g., Monday,Wednesday):","");
+    const special = prompt("Enter special cases for this template (comma separated, optional):","");
+
+    const template = {
+        name: name,
+        dayEnd: dayEnd,
+        activities: schedule,
+        days: days ? days.split(',').map(d=>d.trim()) : [],
+        special: special ? special.split(',').map(s=>s.trim()) : []
+    };
+
+    let templates = JSON.parse(localStorage.getItem('scheduleTemplates')) || [];
     templates.push(template);
     localStorage.setItem('scheduleTemplates', JSON.stringify(templates));
     refreshTemplateSelect();
 }
+
 function loadTemplate(index){
-    const templates=JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
-    if(index<0||index>=templates.length) return;
-    const t=templates[index];
+    const templates = JSON.parse(localStorage.getItem('scheduleTemplates')) || [];
+    if(index < 0 || index >= templates.length) return;
+
+    const t = templates[index];
     window.state.setDefaultSchedule(t.activities);
+    window.currentDayEnd = t.dayEnd; // crucial for prioritySolve
 }
+
 function refreshTemplateSelect(){
     const select=document.getElementById('templateSelect');
     select.innerHTML='';
@@ -181,20 +200,27 @@ function importTemplate(file){
 
 // --- automatic template selection ---
 function autoLoadTemplate(){
-    const templates = JSON.parse(localStorage.getItem('scheduleTemplates'))||[];
+    const templates = JSON.parse(localStorage.getItem('scheduleTemplates')) || [];
     const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
     const specialCases = []; // can be manually added or detected
+
     const matches = templates.filter(t => (t.days?.includes(today) || t.special?.some(s=>specialCases.includes(s))));
-    
+
     if(matches.length === 0) return;
     if(matches.length === 1){
         window.state.setDefaultSchedule(matches[0].activities);
+        window.currentDayEnd = matches[0].dayEnd;
         return;
     }
+
     const choice = prompt("Multiple templates match today:\n" + matches.map((t,i)=>`${i+1}: ${t.name}`).join("\n") + "\nEnter number:");
     const idx = parseInt(choice)-1;
-    if(idx>=0 && idx<matches.length) window.state.setDefaultSchedule(matches[idx].activities);
+    if(idx >= 0 && idx < matches.length) {
+        window.state.setDefaultSchedule(matches[idx].activities);
+        window.currentDayEnd = matches[idx].dayEnd;
+    }
 }
+
 
 // --- helper: current time ---
 function getCurrentTimeMinutes() {
