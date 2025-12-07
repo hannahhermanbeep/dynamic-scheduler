@@ -65,66 +65,67 @@ window.state = (function(){
 })();
 
 // --- solver ---
-window.solver.prioritySolve = function() {
-    const schedule = window.state.getCurrentSchedule();
-    const dayEnd = window.currentDayEnd || (schedule[schedule.length-1].start + schedule[schedule.length-1].duration);
-    const now = getCurrentTimeMinutes();
+window.solver = {
+    prioritySolve = function() {
+        const schedule = window.state.getCurrentSchedule();
+        const dayEnd = window.currentDayEnd || (schedule[schedule.length-1].start + schedule[schedule.length-1].duration);
+        const now = getCurrentTimeMinutes();
 
     // Step 1: Start times are sequential
-    for(let i=1;i<schedule.length;i++){
-        const prev = schedule[i-1];
-        const act = schedule[i];
-        if(!act.locked && (act.start + act.duration > now || document.getElementById('templateMakerMode').checked)){
-            act.start = prev.start + prev.duration;
+        for(let i=1;i<schedule.length;i++){
+            const prev = schedule[i-1];
+            const act = schedule[i];
+            if(!act.locked && (act.start + act.duration > now || document.getElementById('templateMakerMode').checked)){
+                act.start = prev.start + prev.duration;
+            }
         }
-    }
 
-    // Step 2: Calculate total adjustable time
-    let fixedTime = 0;
-    let flexibleActivities = [];
-    schedule.forEach(act=>{
-        if(act.locked || !act.flexible || (!document.getElementById('templateMakerMode').checked && act.start + act.duration <= now)){
-            fixedTime += act.duration;
-        } else {
-            flexibleActivities.push(act);
-        }
-    });
+        // Step 2: Calculate total adjustable time
+        let fixedTime = 0;
+        let flexibleActivities = [];
+        schedule.forEach(act=>{
+            if(act.locked || !act.flexible || (!document.getElementById('templateMakerMode').checked && act.start + act.duration <= now)){
+                fixedTime += act.duration;
+            } else {
+                flexibleActivities.push(act);
+            }
+        });
 
-    let remainingTime = dayEnd - fixedTime;
-    let totalFlexibleMin = flexibleActivities.reduce((sum, a)=>sum + a.minDuration,0);
-    let totalFlexibleMax = flexibleActivities.reduce((sum, a)=>sum + a.maxDuration,0);
+        let remainingTime = dayEnd - fixedTime;
+        let totalFlexibleMin = flexibleActivities.reduce((sum, a)=>sum + a.minDuration,0);
+        let totalFlexibleMax = flexibleActivities.reduce((sum, a)=>sum + a.maxDuration,0);
 
     // Step 3: Check if remainingTime fits within flexible ranges
-    if(remainingTime < totalFlexibleMin){
-        alert("Cannot fit schedule within day: not enough time for minimum durations.");
+        if(remainingTime < totalFlexibleMin){
+            alert("Cannot fit schedule within day: not enough time for minimum durations.");
+            return;
+        }
+        if(remainingTime > totalFlexibleMax){
+            alert("Cannot fit schedule within day: too much time for maximum durations.");
         return;
-    }
-    if(remainingTime > totalFlexibleMax){
-        alert("Cannot fit schedule within day: too much time for maximum durations.");
-        return;
-    }
+        }
 
     // Step 4: Distribute remaining time according to priorities
     // Start by giving minDuration to each flexible activity
-    flexibleActivities.forEach(act => act.duration = act.minDuration);
-    let extraTime = remainingTime - totalFlexibleMin;
+        flexibleActivities.forEach(act => act.duration = act.minDuration);
+        let extraTime = remainingTime - totalFlexibleMin;
 
     // Sort by priority (lower number = higher priority to change)
-    flexibleActivities.sort((a,b)=>a.priority - b.priority);
+        flexibleActivities.sort((a,b)=>a.priority - b.priority);
 
     // Distribute extraTime to activities without exceeding maxDuration
-    for(let act of flexibleActivities){
-        if(extraTime <= 0) break;
-        let room = act.maxDuration - act.duration;
-        let add = Math.min(room, extraTime);
-        act.duration += add;
-        extraTime -= add;
-    }
+        for(let act of flexibleActivities){
+            if(extraTime <= 0) break;
+            let room = act.maxDuration - act.duration;
+            let add = Math.min(room, extraTime);
+            act.duration += add;
+            extraTime -= add;
+        }
 
     // Step 5: Recalculate start times after duration adjustments
-    for(let i=1;i<schedule.length;i++){
-        schedule[i].start = schedule[i-1].start + schedule[i-1].duration;
-    }
+        for(let i=1;i<schedule.length;i++){
+            schedule[i].start = schedule[i-1].start + schedule[i-1].duration;
+        }
 
     window.state.setCurrentSchedule(schedule);
 };
